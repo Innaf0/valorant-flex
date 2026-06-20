@@ -1,3 +1,10 @@
+//! Touch screen driver (XPT2046/ILI9341 integrated touch).
+//!
+//! Shares the SPI bus with the display. Uses a separate CS pin and
+//! optional IRQ pin to detect touches.
+
+use embassy_rp::gpio::{Input, Pin, Pull};
+use embassy_rp::Peri;
 use embedded_hal_1::spi::{Operation, SpiDevice};
 
 struct Calibration {
@@ -20,16 +27,25 @@ const CALIBRATION: Calibration = Calibration {
 
 pub struct Touch<SPI: SpiDevice> {
     spi: SPI,
+    _irq: Input<'static>,
 }
 
 impl<SPI> Touch<SPI>
 where
     SPI: SpiDevice,
 {
-    pub fn new(spi: SPI) -> Self {
-        Self { spi }
+    pub fn new(spi: SPI, irq_pin: Peri<'static, impl Pin>) -> Self {
+        let irq = Input::new(irq_pin, Pull::Up);
+        Self { spi, _irq: irq }
     }
 
+    /// Check if the screen is being touched (IRQ pin is low).
+    pub fn is_touched(&self) -> bool {
+        self._irq.is_low()
+    }
+
+    /// Read raw touch coordinates and return calibrated (x, y) in pixels.
+    /// Returns `None` if no touch is detected.
     pub fn read(&mut self) -> Option<(i32, i32)> {
         let mut x = [0; 2];
         let mut y = [0; 2];
@@ -49,6 +65,7 @@ where
 
         let x = ((x - cal.x1) * cal.sx / (cal.x2 - cal.x1)).clamp(0, cal.sx);
         let y = ((y - cal.y1) * cal.sy / (cal.y2 - cal.y1)).clamp(0, cal.sy);
+
         if x == 0 && y == 0 {
             None
         } else {

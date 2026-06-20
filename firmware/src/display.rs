@@ -1,22 +1,20 @@
 //! ILI9341 TFT display driver via SPI.
 //!
 //! Initializes the display and provides helpers to draw match info.
-//! All hardware types are generic — the caller decides which SPI bus
-//! and which GPIO pins to use.
+//! The SPI bus is shared with the touch controller via `SpiDevice`.
 
 use core::fmt::Write;
 
 use defmt::*;
 use embassy_rp::gpio::{Level, Output, Pin};
-use embassy_rp::spi::{Blocking, ClkPin, Instance as SpiInstance, MisoPin, MosiPin, Spi};
-use embassy_rp::{spi, Peri};
+use embassy_rp::Peri;
 use embedded_graphics::mono_font::iso_8859_1::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::Text;
-use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_hal_1::spi::SpiDevice;
 use heapless::String;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ILI9341Rgb565;
@@ -28,31 +26,24 @@ use crate::request::MatchInfo;
 
 // --- Public API ---
 
-/// Initialise the ILI9341 display over SPI.
+/// Initialise the ILI9341 display over a shared SPI bus.
 ///
-/// Returns the display object ready for drawing.  Pass `&mut display` to
+/// Returns the display object ready for drawing. Pass `&mut display` to
 /// [`draw_match`] to render match data.
 ///
-/// `SPI` is the SPI peripheral (e.g. `SPI0` or `SPI1`).
-pub fn init_display<SPI: SpiInstance + 'static>(
-    spi: Peri<'static, SPI>,
-    sclk: Peri<'static, impl ClkPin<SPI>>,
-    mosi: Peri<'static, impl MosiPin<SPI>>,
-    miso: Peri<'static, impl MisoPin<SPI>>,
+/// `SPI` is the SPI device (e.g., `ExclusiveDevice` or `RefCellDevice`).
+pub fn init_display<SPI>(
+    spi: SPI,
     dc: Peri<'static, impl Pin>,
-    cs: Peri<'static, impl Pin>,
     rst: Peri<'static, impl Pin>,
-) -> impl DrawTarget<Color = Rgb565> {
+) -> impl DrawTarget<Color = Rgb565>
+where
+    SPI: SpiDevice + 'static,
+{
     static SPI_BUF: StaticCell<[u8; 256]> = StaticCell::new();
 
-    let mut spi_config = spi::Config::default();
-    spi_config.frequency = 64_000_000;
-
-    let spi = Spi::new_blocking(spi, sclk, mosi, miso, spi_config);
-    let cs = Output::new(cs, Level::High);
-    let spi_dev = ExclusiveDevice::new_no_delay(spi, cs);
     let dc = Output::new(dc, Level::Low);
-    let di = SpiInterface::new(spi_dev, dc, SPI_BUF.init([0u8; 256]));
+    let di = SpiInterface::new(spi, dc, SPI_BUF.init([0u8; 256]));
 
     let rst = Output::new(rst, Level::High);
 
