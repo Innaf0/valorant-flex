@@ -11,11 +11,11 @@ use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_net::{Config, Stack, StackResources};
 use embassy_rp::clocks::RoscRng;
+use embassy_rp::dma;
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0};
-use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::peripherals::PIO0;
+use embassy_rp::pio::Pio;
 use embassy_rp::Peri;
-use embassy_rp::{bind_interrupts, dma};
 
 use heapless::{String, Vec};
 use reqwless::client::HttpClient;
@@ -25,19 +25,7 @@ use serde_json_core::from_slice;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-bind_interrupts!(struct Irqs {
-    PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    DMA_IRQ_0 => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
-});
-
-const WIFI_NETWORK: &str = "ssid"; // change to your network SSID
-const WIFI_PASSWORD: &str = "pwd"; // change to your network password
-
-// Valorant API config
-const API_KEY: &str = "YOUR_API_KEY"; // change to your HenrikDev API key
-const PLAYER_REGION: &str = "eu"; // eu, na, ap, kr
-const PLAYER_NAME: &str = "PlayerName"; // your Riot name
-const PLAYER_TAG: &str = "TAG"; // your Riot tag (without #)
+use crate::irqs::Irqs;
 
 // --- Background tasks ---
 
@@ -55,11 +43,15 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 
 // --- Public types ---
 
-/// Holds the initialized network stack and TLS seed, so fetch_match() can
-/// be called repeatedly without re-initialising WiFi.
+/// Holds the initialized network stack, TLS seed, and API config so
+/// fetch_match() can be called repeatedly without re-initialising WiFi.
 pub struct NetworkContext {
     pub stack: Stack<'static>,
     pub seed: u64,
+    pub api_key: String<64>,
+    pub player_region: String<8>,
+    pub player_name: String<32>,
+    pub player_tag: String<8>,
 }
 
 /// Owned match summary (copied out of the JSON response).
@@ -167,6 +159,12 @@ struct TeamResult {
 /// spawn the background driver tasks.  Call this **once** at startup.
 pub async fn init_network(
     spawner: Spawner,
+    wifi_ssid: &str,
+    wifi_password: &str,
+    api_key: &str,
+    player_region: &str,
+    player_name: &str,
+    player_tag: &str,
     pin_23: Peri<'static, embassy_rp::peripherals::PIN_23>,
     pin_25: Peri<'static, embassy_rp::peripherals::PIN_25>,
     pin_24: Peri<'static, embassy_rp::peripherals::PIN_24>,
@@ -220,7 +218,7 @@ pub async fn init_network(
     spawner.spawn(unwrap!(net_task(runner)));
 
     while let Err(err) = control
-        .join(WIFI_NETWORK, JoinOptions::new(WIFI_PASSWORD.as_bytes()))
+        .join(wifi_ssid, JoinOptions::new(wifi_password.as_bytes()))
         .await
     {
         info!("join failed: {:?}", err);
@@ -234,7 +232,14 @@ pub async fn init_network(
 
     info!("Network is up!");
 
-    NetworkContext { stack, seed }
+    NetworkContext {
+        stack,
+        seed,
+        api_key: copy_str(api_key),
+        player_region: copy_str(player_region),
+        player_name: copy_str(player_name),
+        player_tag: copy_str(player_tag),
+    }
 }
 
 /// Fetch the latest match data from the Valorant API.
@@ -257,7 +262,12 @@ pub async fn fetch_match(ctx: &NetworkContext) -> Option<MatchInfo> {
     let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
 
     let mut url_buf = [0u8; 128];
-    let url = build_url(&mut url_buf, PLAYER_REGION, PLAYER_NAME, PLAYER_TAG);
+    let url = build_url(
+        &mut url_buf,
+        ctx.player_region.as_str(),
+        ctx.player_name.as_str(),
+        ctx.player_tag.as_str(),
+    );
 
     info!("Fetching: {}", url);
 
@@ -269,7 +279,7 @@ pub async fn fetch_match(ctx: &NetworkContext) -> Option<MatchInfo> {
         }
     };
 
-    let auth_headers = [("Authorization", API_KEY)];
+    let auth_headers = [("Authorization", ctx.api_key.as_str())];
     let mut request = request.headers(&auth_headers);
     let response = match request.send(&mut rx_buffer).await {
         Ok(resp) => resp,
@@ -317,14 +327,15 @@ pub async fn fetch_match(ctx: &NetworkContext) -> Option<MatchInfo> {
 
 // --- Helpers ---
 
+/// Copy a &str into a heapless::String.
+fn copy_str<const N: usize>(s: &str) -> String<N> {
+    let mut out = String::new();
+    out.push_str(s).ok();
+    out
+}
+
 /// Copy borrowed serde data into an owned MatchInfo.
 fn copy_match(m: &MatchData<'_>) -> MatchInfo {
-    fn copy_str<const N: usize>(s: &str) -> String<N> {
-        let mut out = String::new();
-        out.push_str(s).ok();
-        out
-    }
-
     let mut players: Vec<PlayerInfo, 10> = Vec::new();
     for p in &m.players.all_players {
         let _ = players.push(PlayerInfo {
