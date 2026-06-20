@@ -1,7 +1,7 @@
 [package]
 name = "firmware"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 embassy-embedded-hal = { version = "0.6", features = ["defmt"] }
@@ -42,7 +42,7 @@ mipidsi = "0.8"
 display-interface = "0.5"
 byte-slice-cast = { version = "1", default-features = false }
 smart-leds = "0.3"
-heapless = "0.9"
+heapless = { version = "0.9", features = ["serde", "defmt"] }
 usbd-hid = "0.10"
 
 embedded-hal-1 = { package = "embedded-hal", version = "1" }
@@ -54,6 +54,8 @@ static_cell = "2"
 portable-atomic = { version = "1", features = ["critical-section"] }
 log = "0.4"
 embedded-sdmmc = "0.7"
+reqwless = {version ="0.14", features =["defmt"]}
+der = { version = "0.8", features = ["heapless"] }
 
 [profile.release]
 # Enable generation of debug symbols even on release builds
