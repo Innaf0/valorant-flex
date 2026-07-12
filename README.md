@@ -43,4 +43,3 @@ Here's my BOM!!
 | battery holder     | $0.68           | 1            | $0.68        | https://www.aliexpress.com/item/1005008468643124.html |
 | PCB                | $0.40           | 1            | $0.40        | https://cart.jlcpcb.com                               |
 |                    |                 | total price: | $33.56       |                                                       |
-

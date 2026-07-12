@@ -3497,7 +3497,7 @@
 		(uuid "0e67b42f-99b4-48ed-8f6d-3a11090b85d1")
 	)
 	(label "DISP_T_IRQ"
-		(at 105.41 93.98 0)
+		(at 105.41 104.14 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3787,7 +3787,7 @@
 		(uuid "c642fd8b-35ff-4d81-8fa1-6ce9514ee35c")
 	)
 	(label "SD_MISO"
-		(at 105.41 104.14 0)
+		(at 105.41 93.98 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4048,6 +4048,7 @@
 		)
 		(pin "6"
 			(uuid "873740e4-6412-48cd-9d4b-9aaef479152c")
+			(alternate "SPI0_RX")
 		)
 		(pin "18"
 			(uuid "156da33e-0fb1-4751-8ab7-b2af0f419c8e")
@@ -4087,7 +4088,6 @@
 		)
 		(pin "11"
 			(uuid "99372064-4a63-4e91-afea-cd5fab5eb5d4")
-			(alternate "SPI1_RX")
 		)
 		(pin "2"
 			(uuid "8cfc1b55-2c49-4c74-a2bd-50c9a7270eb2")
